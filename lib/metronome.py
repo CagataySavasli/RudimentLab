@@ -1,16 +1,16 @@
 # lib/metronome.py
 import numpy as np
 import sounddevice as sd
-from time import sleep
+import time
 
 class Metronome:
     def __init__(self, bpm: int = 120):
         self.bpm = bpm
         self.running = False
-        # Pre-generate click waveforms
-        duration = 0.1
+        # Generate click waveforms
+        dur = 0.05  # beep duration in seconds
         self.sample_rate = 44100
-        t = np.linspace(0, duration, int(self.sample_rate * duration), endpoint=False)
+        t = np.linspace(0, dur, int(self.sample_rate * dur), endpoint=False)
         self.high = np.sin(2 * np.pi * 440 * t).astype(np.float32)
         self.low = np.sin(2 * np.pi * 880 * t).astype(np.float32)
 
@@ -20,10 +20,17 @@ class Metronome:
 
     def metronome_loop(self):
         interval = 60.0 / self.bpm
+        start_time = time.time()
+        beat = 0
+        # pattern accent on first (R) then three lows
+        pat = ['R','L','L','L']
         while self.running:
-            for i in range(4):
-                if not self.running:
-                    return
-                waveform = self.high if i == 0 else self.low
-                self.play_beep(waveform)
-                sleep(max(0, interval - (len(waveform) / self.sample_rate)))
+            scheduled = start_time + beat * interval
+            now = time.time()
+            if scheduled > now:
+                time.sleep(scheduled - now)
+            symbol = pat[beat % len(pat)]
+            wave = self.high if symbol=='R' else self.low
+            self.play_beep(wave)
+            beat += 1
+
