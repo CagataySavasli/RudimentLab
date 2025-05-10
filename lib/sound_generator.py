@@ -1,9 +1,9 @@
-# lib/sound_maker.py
+# lib/sound_generator.py
 import numpy as np
 import io
 from scipy.io.wavfile import write
 
-class SoundMaker:
+class SoundGenerator:
     def __init__(self, sr=44100, dur=0.05):
         self.sr = sr
         t = np.linspace(0, dur, int(sr * dur), endpoint=False)
