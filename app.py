@@ -1,84 +1,75 @@
 # app.py
 import streamlit as st
-import threading
+import streamlit.components.v1 as components
 import json
-import numpy as np
-from lib.sound_maker import SoundMaker
+
+# Web Audio scheduler without threads
 
 def main():
     st.set_page_config(page_title="RudimentLab", page_icon="🥁", layout="wide")
     st.title("RudimentLab 🥁")
     st.write("Drumming practice: Metronome or guided exercises.")
 
-    # Determine audio backend
-    try:
-        import sounddevice as sd
-        sd.query_devices()
-        backend = 'sd'
-    except Exception:
-        backend = 'web'
-
-    # BPM state
-    if 'bpm' not in st.session_state:
-        st.session_state.bpm = 120
-    bpm_input = st.number_input("Enter BPM", 40, 300, st.session_state.bpm, 1)
-    bpm_slider = st.slider("Adjust BPM", 40, 300, st.session_state.bpm, 1)
-    bpm = bpm_input if bpm_input != st.session_state.bpm else bpm_slider
-    st.session_state.bpm = bpm
+    # BPM controls
+    bpm = st.slider("BPM", 40, 300, 120, key="bpm")
     st.write(f"**Current BPM:** {bpm}")
 
-    # Mode
-    mode = st.radio("Select mode", ['Metronome', 'Exercise'])
+    # Mode selection
+    mode = st.radio("Mode", ["Metronome", "Exercise"], key="mode")
 
-    # Pattern
-    if mode == 'Metronome':
-        st.write("**Metronome:** R L L L")
-        pattern = ['R'] + ['L'] * 3
+    # Pattern setup
+    if mode == "Metronome":
+        st.write("**Metronome:** Accent on first beat")
+        pattern = ["R"] + ["L"] * 3
     else:
-        notation = st.text_input("Exercise notation (R & L)", "RLRL RLRL RRLL RRLL")
+        notation = st.text_input("Exercise notation (R and L)", "RLRL RLRL RRLL RRLL", key="notation")
         st.write(f"**Pattern:** {notation}")
-        pattern = [c for c in notation.replace(' ','').upper() if c in ('R','L')]
+        pattern = [c for c in notation.replace(" ","").upper() if c in ("R","L")]
 
-    # Buttons
-    col1, col2 = st.columns(2)
-    start = col1.button("▶️ Start")
-    stop  = col2.button("⏹ Stop")
+    # Start/Stop controls
+    start = st.button("▶️ Start", key="start")
+    stop  = st.button("⏹ Stop", key="stop")
 
-    if backend == 'sd':
-        # sounddevice loop
-        from lib.metronome import Metronome
-        from lib.exercise import Exercise
-        if 'metronome' not in st.session_state:
-            st.session_state.metronome = Metronome(bpm)
-        if 'exercise' not in st.session_state:
-            st.session_state.exercise = Exercise()
-        met = st.session_state.metronome
-        ex = st.session_state.exercise
-        met.bpm = bpm
-        if mode == 'Metronome':
-            if start and not met.running:
-                met.running = True
-                threading.Thread(target=met.metronome_loop, daemon=True).start()
-            if stop and met.running:
-                met.running = False
-        else:
-            ex.notation = ''.join(pattern)
-            if start and not ex.running:
-                ex.running = True
-                threading.Thread(target=lambda: ex.exercise_loop(bpm), daemon=True).start()
-            if stop and ex.running:
-                ex.running = False
-    else:
-        # Web Audio API via minimal HTML injection
-        sg = SoundGenerator()
-        wav = sg.make_pattern_wav(pattern, bpm)
-        if start:
-            st.audio(wav, format='audio/wav', start_time=0)
-        if stop:
-            # stop by resetting audio widget
-            st.empty()
+    # Convert pattern to JSON for JS
+    pattern_js = json.dumps(pattern)
+    interval_ms = 60000 / bpm
 
-    st.markdown("*Automatically selects sounddevice locally or browser audio on Cloud.*")
+    # Inject Web Audio API JavaScript
+    if start:
+        js = f"""
+        <script>
+        if(window.metInterval) clearInterval(window.metInterval);
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        const ctx = new AudioContext();
+        const pattern = {pattern_js};
+        const interval = {interval_ms};
+        let idx = 0;
+        function playBeat() {{
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.frequency.value = pattern[idx] === 'R' ? 440 : 880;
+            osc.connect(gain).connect(ctx.destination);
+            gain.gain.setValueAtTime(1, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.05);
+            osc.start(ctx.currentTime);
+            osc.stop(ctx.currentTime + 0.05);
+            idx = (idx + 1) % pattern.length;
+        }}
+        playBeat();
+        window.metInterval = setInterval(playBeat, interval);
+        </script>
+        """
+        components.html(js, height=0)
+
+    if stop:
+        js = """
+        <script>
+        if(window.metInterval){ clearInterval(window.metInterval); window.metInterval = null; }
+        </script>
+        """
+        components.html(js, height=0)
+
+    st.markdown("*Implementation uses browser Web Audio API—no Python threads or server-side audio.*")
 
 if __name__ == '__main__':
     main()
