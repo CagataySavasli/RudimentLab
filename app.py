@@ -8,7 +8,7 @@ from lib.exercise import Exercise
 def main():
     st.set_page_config(page_title="RudimentLab", page_icon="🥁", layout="wide")
     st.title("RudimentLab 🥁")
-    st.write("Drumming practice: Metronome or guided exercises without HTML.")
+    st.write("Drumming practice: Metronome or guided exercises. Have fun !!!")
 
     # Initialize session_state defaults
     if 'bpm' not in st.session_state:
