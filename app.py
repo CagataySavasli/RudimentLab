@@ -1,18 +1,18 @@
 # app.py
 import streamlit as st
-import threading
-import time
+from lib.sound_generator import SoundGenerator
 from lib.metronome import Metronome
 from lib.exercise import Exercise
-from lib.sound_generator import SoundGenerator
+import time
+import threading
 
 
 def main():
     st.set_page_config(page_title="RudimentLab", page_icon="🥁", layout="wide")
     st.title("RudimentLab 🥁")
-    st.write("Drumming practice: Metronome or guided exercises.")
+    st.write("Drumming practice UI that runs both locally (sounddevice) and on Streamlit Cloud (browser audio).")
 
-    # Detect backend: sounddevice available locally?
+    # Detect if sounddevice is available (local) or not (deploy/cloud)
     try:
         import sounddevice as sd
         sd.query_devices()
@@ -20,37 +20,46 @@ def main():
     except Exception:
         backend = 'browser'
 
-    # BPM controls
-    bpm = st.slider("BPM", min_value=40, max_value=300, value=120, step=1)
+    # BPM input & slider synchronized via session_state
+    if 'bpm' not in st.session_state:
+        st.session_state.bpm = 120
+    bpm = st.session_state.bpm
+    col1, col2 = st.columns(2)
+    new_bpm = col1.number_input("BPM", min_value=40, max_value=300, value=bpm, step=1, key='bpm_input')
+    new_bpm_slider = col2.slider("BPM Slider", min_value=40, max_value=300, value=bpm, step=1, key='bpm_slider')
+    if new_bpm != bpm:
+        bpm = new_bpm
+    elif new_bpm_slider != bpm:
+        bpm = new_bpm_slider
+    st.session_state.bpm = bpm
+    st.write(f"**Current BPM:** {bpm}")
 
     # Mode selection
-    mode = st.radio("Mode", ['Metronome', 'Exercise'])
+    mode = st.radio("Mode", ['Metronome', 'Exercise'], key='mode_radio')
 
-    # Pattern
+    # Pattern definition
     if mode == 'Metronome':
-        st.write("**Metronome pattern:** R L L L")
+        st.write("**Metronome pattern:** Accent on 1st beat (R L L L)")
         pattern = ['R'] + ['L'] * 3
     else:
-        notation = st.text_input("Exercise notation (R and L)", "RLRL RLRL RRLL RRLL")
+        notation = st.text_input("Exercise notation (use R and L)", "RLRL RLRL RRLL RRLL", key='notation_input')
         st.write(f"**Pattern:** {notation}")
-        pattern = [c for c in notation.replace(' ','').upper() if c in ('R','L')]
+        pattern = [c for c in notation.replace(' ', '').upper() if c in ('R','L')]
 
-    # Buttons
-    col1, col2 = st.columns(2)
-    start = col1.button("▶️ Start")
-    stop  = col2.button("⏹ Stop")
+    # Start/Stop buttons
+    start = col1.button("▶️ Start", key='start')
+    stop  = col2.button("⏹ Stop", key='stop')
 
+    # LOCAL: use threading + sounddevice via Metronome/Exercise classes
     if backend == 'local':
-        # Use Metronome/Exercise classes with sounddevice
+        # initialize if needed
         if 'met' not in st.session_state:
             st.session_state.met = Metronome(bpm)
         if 'ex' not in st.session_state:
             st.session_state.ex = Exercise()
         met = st.session_state.met
-        ex = st.session_state.ex
+        ex  = st.session_state.ex
         met.bpm = bpm
-        ex_start = False
-
         if mode == 'Metronome':
             if start and not met.running:
                 met.running = True
@@ -65,18 +74,20 @@ def main():
             if stop and ex.running:
                 ex.running = False
 
+    # BROWSER: generate WAV clip and play via st.audio
     else:
-        # Browser backend: generate WAV buffer and play via st.audio
         sg = SoundGenerator()
-        duration = 30  # seconds of audio
-        buf, sr = sg.generate_pattern(pattern, bpm, duration)
+        # generate e.g. 10 seconds of audio (looping pattern)
+        wav_bytes, sr = sg.generate_pattern(pattern, bpm, duration=10)
         if start:
-            st.audio(buf, sample_rate=sr)
+            st.audio(wav_bytes, format='audio/wav', sample_rate=sr)
         if stop:
-            # no direct stop API; restart app or mute
-            pass
+            # no direct stop for st.audio; re-render clears audio
+            st.empty()
 
-    st.markdown("*Backend:* **%s** *Note: Local uses sounddevice; browser uses generated WAV via st.audio (30s clips)." % backend)
+    st.markdown(
+        f"*Backend:* **{backend}** *Note:* Local uses sounddevice; Cloud uses browser audio (st.audio)."
+    )
 
 if __name__ == '__main__':
     main()
