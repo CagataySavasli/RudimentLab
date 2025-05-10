@@ -6,6 +6,7 @@ authors = [
     {name = "CagataySavasli",email = "cagatay.savasli@ozu.edu.tr"}
 ]
 readme = "README.md"
+package-mode = false
 requires-python = ">=3.12"
 dependencies = [
     "streamlit (>=1.45.0,<2.0.0)",
