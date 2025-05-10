@@ -7,7 +7,7 @@ from lib.audio_backend import LocalAudioBackend, BrowserAudioBackend
 def main():
     st.set_page_config(page_title="RudimentLab", page_icon="🥁", layout="wide")
     st.title("RudimentLab 🥁")
-    st.write("Drumming practice: Metronome or guided exercises.")
+    st.write("Drumming practice: Metronome or guided exercises. Have Fun !!!")
 
     # Determine backend: local if sounddevice available, else browser
     try:
