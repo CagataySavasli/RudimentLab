@@ -12,6 +12,7 @@ dependencies = [
     "streamlit (>=1.45.0,<2.0.0)",
     "sounddevice (>=0.5.1,<0.6.0)",
     "notebook (>=7.4.2,<8.0.0)",
+    "scipy (>=1.15.3,<2.0.0)",
 ]
 
 
