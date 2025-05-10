@@ -12,7 +12,7 @@ def main():
     try:
         import sounddevice as sd
         sd.query_devices()
-        backend_type = 'local'
+        backend_type = 'browser'
     except Exception:
         backend_type = 'browser'
 
