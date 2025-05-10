@@ -1,6 +1,8 @@
 # lib/audio_backend.py
 from abc import ABC, abstractmethod
 import threading
+import base64
+import json
 
 class AudioBackend(ABC):
     @abstractmethod
@@ -36,25 +38,43 @@ class LocalAudioBackend(AudioBackend):
 
 from lib.sound_generator import SoundGenerator
 
-class BrowserAudioBackend(AudioBackend):
+class BrowserAudioBackend:
     def __init__(self):
-        self.sound_gen = SoundGenerator()
-        self.placeholder = None
+        self.sg = SoundGenerator()
+        # Pre-generate URIs for R and L
+        r_bytes = self.sg.generate_wav_bytes(self.sg.high)
+        l_bytes = self.sg.generate_wav_bytes(self.sg.low)
+        self.r_uri = f"data:audio/wav;base64,{base64.b64encode(r_bytes).decode()}"
+        self.l_uri = f"data:audio/wav;base64,{base64.b64encode(l_bytes).decode()}"
+        self.ph = None
+
     def set_placeholder(self, ph):
-        self.placeholder = ph
-    def play_metronome(self, bpm: int):
-        pattern = ['R'] + ['L'] * 3
-        self._play_loop(pattern, bpm)
-    def stop_metronome(self):
-        if self.placeholder:
-            self.placeholder.empty()
-    def play_exercise(self, pattern: list[str], bpm: int):
-        self._play_loop(pattern, bpm)
-    def stop_exercise(self):
-        if self.placeholder:
-            self.placeholder.empty()
-    def _play_loop(self, pattern: list[str], bpm: int):
-        # Generate 300s of audio
-        wav_bytes, sr = self.sound_gen.generate_pattern(pattern, bpm, duration=300)
-        if self.placeholder:
-            self.placeholder.audio(wav_bytes, format='audio/wav', sample_rate=sr)
+        self.ph = ph
+
+    def play_pattern(self, pattern, bpm: int):
+        if not self.ph: return
+        pattern_js = json.dumps(pattern)
+        interval = 60000 / bpm
+        js = f"""
+        <script>
+        if(window.metInterval) clearInterval(window.metInterval);
+        const pattern = {pattern_js};
+        const interval = {interval};
+        const rAudio = new Audio('{self.r_uri}');
+        const lAudio = new Audio('{self.l_uri}');
+        let idx = 0;
+        function playBeat() {{
+            const a = pattern[idx] === 'R' ? rAudio.cloneNode() : lAudio.cloneNode();
+            a.play();
+            idx = (idx + 1) % pattern.length;
+        }}
+        playBeat();
+        window.metInterval = setInterval(playBeat, interval);
+        </script>
+        """
+        self.ph.markdown(js, unsafe_allow_html=True)
+
+    def stop(self):
+        if self.ph:
+            js = "<script>if(window.metInterval){clearInterval(window.metInterval);window.metInterval=null;}</script>"
+            self.ph.markdown(js, unsafe_allow_html=True)
