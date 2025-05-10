@@ -1,0 +1,19 @@
+[project]
+name = "rudimentlab"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "CagataySavasli",email = "cagatay.savasli@ozu.edu.tr"}
+]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "streamlit (>=1.45.0,<2.0.0)",
+    "sounddevice (>=0.5.1,<0.6.0)",
+    "notebook (>=7.4.2,<8.0.0)",
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
