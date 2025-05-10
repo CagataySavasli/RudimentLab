@@ -1,92 +1,78 @@
 # app.py
 import streamlit as st
-from lib.sound_generator import SoundGenerator
-from lib.metronome import Metronome
-from lib.exercise import Exercise
-import time
 import threading
+from lib.audio_backend import LocalAudioBackend, BrowserAudioBackend
 
 
 def main():
     st.set_page_config(page_title="RudimentLab", page_icon="🥁", layout="wide")
     st.title("RudimentLab 🥁")
-    st.write("Drumming practice UI that runs both locally (sounddevice) and on Streamlit Cloud (browser audio).")
+    st.write("Drumming practice: Metronome or guided exercises.")
 
-    # Detect if sounddevice is available (local) or not (deploy/cloud)
+    # Determine backend: local if sounddevice available, else browser
     try:
         import sounddevice as sd
         sd.query_devices()
-        backend = 'local'
+        backend_type = 'local'
     except Exception:
-        backend = 'browser'
+        backend_type = 'browser'
 
-    # BPM input & slider synchronized via session_state
+    # Instantiate backend once
+    if 'audio_backend' not in st.session_state:
+        if backend_type == 'local':
+            st.session_state.audio_backend = LocalAudioBackend(st.session_state.get('bpm', 120))
+        else:
+            st.session_state.audio_backend = BrowserAudioBackend()
+    backend = st.session_state.audio_backend
+
+    # BPM controls
     if 'bpm' not in st.session_state:
         st.session_state.bpm = 120
-    bpm = st.session_state.bpm
     col1, col2 = st.columns(2)
-    new_bpm = col1.number_input("BPM", min_value=40, max_value=300, value=bpm, step=1, key='bpm_input')
-    new_bpm_slider = col2.slider("BPM Slider", min_value=40, max_value=300, value=bpm, step=1, key='bpm_slider')
-    if new_bpm != bpm:
-        bpm = new_bpm
-    elif new_bpm_slider != bpm:
-        bpm = new_bpm_slider
+    new_bpm = col1.number_input("Enter BPM", 40, 300, st.session_state.bpm, 1, key='bpm_input')
+    new_bpm_slider = col2.slider("Adjust BPM", 40, 300, st.session_state.bpm, 1, key='bpm_slider')
+    # Sync BPM
+    bpm = new_bpm if new_bpm != st.session_state.bpm else new_bpm_slider
     st.session_state.bpm = bpm
     st.write(f"**Current BPM:** {bpm}")
 
     # Mode selection
     mode = st.radio("Mode", ['Metronome', 'Exercise'], key='mode_radio')
 
-    # Pattern definition
+    # Pattern
     if mode == 'Metronome':
-        st.write("**Metronome pattern:** Accent on 1st beat (R L L L)")
+        st.write("**Pattern:** R L L L")
         pattern = ['R'] + ['L'] * 3
     else:
-        notation = st.text_input("Exercise notation (use R and L)", "RLRL RLRL RRLL RRLL", key='notation_input')
+        default_notation = st.session_state.get('notation', 'RLRL RLRL RRLL RRLL')
+        notation = st.text_input("Exercise notation (use R and L)", default_notation, key='notation_input')
+        st.session_state.notation = notation
         st.write(f"**Pattern:** {notation}")
-        pattern = [c for c in notation.replace(' ', '').upper() if c in ('R','L')]
+        pattern = [c for c in notation.replace(' ', '').upper() if c in ('R', 'L')]
+
+    # Prepare browser backend placeholder
+    if backend_type == 'browser':
+        if 'audio_ph' not in st.session_state:
+            st.session_state.audio_ph = st.empty()
+        backend.set_placeholder(st.session_state.audio_ph)
 
     # Start/Stop buttons
     start = col1.button("▶️ Start", key='start')
     stop  = col2.button("⏹ Stop", key='stop')
 
-    # LOCAL: use threading + sounddevice via Metronome/Exercise classes
-    if backend == 'local':
-        # initialize if needed
-        if 'met' not in st.session_state:
-            st.session_state.met = Metronome(bpm)
-        if 'ex' not in st.session_state:
-            st.session_state.ex = Exercise()
-        met = st.session_state.met
-        ex  = st.session_state.ex
-        met.bpm = bpm
-        if mode == 'Metronome':
-            if start and not met.running:
-                met.running = True
-                threading.Thread(target=met.metronome_loop, daemon=True).start()
-            if stop and met.running:
-                met.running = False
-        else:
-            ex.notation = ''.join(pattern)
-            if start and not ex.running:
-                ex.running = True
-                threading.Thread(target=lambda: ex.exercise_loop(bpm), daemon=True).start()
-            if stop and ex.running:
-                ex.running = False
-
-    # BROWSER: generate WAV clip and play via st.audio
-    else:
-        sg = SoundGenerator()
-        # generate e.g. 10 seconds of audio (looping pattern)
-        wav_bytes, sr = sg.generate_pattern(pattern, bpm, duration=10)
-        if start:
-            st.audio(wav_bytes, format='audio/wav', sample_rate=sr)
-        if stop:
-            # no direct stop for st.audio; re-render clears audio
-            st.empty()
+    # Play or stop based on mode and backend
+    if start and mode == 'Metronome':
+        backend.play_metronome(bpm)
+    if start and mode == 'Exercise':
+        backend.play_exercise(pattern, bpm)
+    if stop and mode == 'Metronome':
+        backend.stop_metronome()
+    if stop and mode == 'Exercise':
+        backend.stop_exercise()
 
     st.markdown(
-        f"*Backend:* **{backend}** *Note:* Local uses sounddevice; Cloud uses browser audio (st.audio)."
+        f"*Audio backend:* **{backend_type}**\n"
+        "*Local uses sounddevice; Browser generates pattern buffer via SoundGenerator.*"
     )
 
 if __name__ == '__main__':
